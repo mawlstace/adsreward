@@ -1,13 +1,53 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
 
-// Sample data - will be replaced with API data later
+// Sample data
 const SAMPLE_ADS = [
-  { id: '1', title: 'Nike Running Shoes', company: 'Nike', category: 'Sports', duration: '30s', reward: '15% OFF' },
-  { id: '2', title: 'New Coffee Blend', company: 'Starbucks', category: 'Food', duration: '15s', reward: 'Buy 1 Get 1 Free' },
-  { id: '3', title: 'Wireless Headphones', company: 'Sony', category: 'Electronics', duration: '45s', reward: '$10 OFF' },
-  { id: '4', title: 'Premium Subscription', company: 'Spotify', category: 'Entertainment', duration: '20s', reward: '1 Month Free' },
-  { id: '5', title: 'Online Course', company: 'Udemy', category: 'Education', duration: '60s', reward: '30% OFF' },
+  { 
+    id: '1', 
+    title: 'Nike Running Shoes', 
+    company: 'Nike', 
+    category: 'Sports', 
+    tags: ['Shoes', 'Running', 'Athletic'], 
+    duration: '30s', 
+    reward: '15% OFF' 
+  },
+  { 
+    id: '2', 
+    title: 'New Coffee Blend', 
+    company: 'Starbucks', 
+    category: 'Food', 
+    tags: ['Coffee', 'Beverages', 'Hot Drinks'], 
+    duration: '15s', 
+    reward: 'Buy 1 Get 1 Free' 
+  },
+  { 
+    id: '3', 
+    title: 'Wireless Headphones', 
+    company: 'Sony', 
+    category: 'Electronics', 
+    tags: ['Audio', 'Wireless', 'Tech'], 
+    duration: '45s', 
+    reward: '$10 OFF' 
+  },
+  { 
+    id: '4', 
+    title: 'Premium Subscription', 
+    company: 'Spotify', 
+    category: 'Entertainment', 
+    tags: ['Music', 'Streaming', 'Premium'], 
+    duration: '20s', 
+    reward: '1 Month Free' 
+  },
+  { 
+    id: '5', 
+    title: 'Online Course', 
+    company: 'Udemy', 
+    category: 'Education', 
+    tags: ['Learning', 'Online', 'Skills'], 
+    duration: '60s', 
+    reward: '30% OFF' 
+  },
 ];
 
 const CATEGORIES = [
@@ -21,8 +61,39 @@ const CATEGORIES = [
 ];
 
 const HomeScreen = ({ navigation }) => {
-  const [selectedCategory, setSelectedCategory] = React.useState('All');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedTags, setSelectedTags] = useState([]);
 
+  // Toggle tag selection
+  const toggleTag = (tag) => {
+    if (selectedTags.includes(tag)) {
+      setSelectedTags(selectedTags.filter(t => t !== tag));
+    } else {
+      setSelectedTags([...selectedTags, tag]);
+    }
+  };
+
+  // Render category item
+  const renderCategoryItem = ({ item }) => (
+    <TouchableOpacity
+      style={[
+        styles.categoryItem,
+        selectedCategory === item.name && styles.selectedCategory
+      ]}
+      onPress={() => setSelectedCategory(item.name)}
+    >
+      <Text
+        style={[
+          styles.categoryText,
+          selectedCategory === item.name && styles.selectedCategoryText
+        ]}
+      >
+        {item.name}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  // Render ad card
   const renderAdCard = ({ item }) => (
     <TouchableOpacity 
       style={styles.adCard}
@@ -32,7 +103,32 @@ const HomeScreen = ({ navigation }) => {
         <Text style={styles.companyName}>{item.company}</Text>
         <Text style={styles.adCategory}>{item.category}</Text>
       </View>
+      
       <Text style={styles.adTitle}>{item.title}</Text>
+      
+      {/* Display tags */}
+      <View style={styles.tagsContainer}>
+        {item.tags?.map((tag, index) => (
+          <TouchableOpacity 
+            key={index} 
+            style={[
+              styles.tagBadge,
+              selectedTags.includes(tag) && styles.selectedTagBadge
+            ]}
+            onPress={() => toggleTag(tag)}
+          >
+            <Text 
+              style={[
+                styles.tagText,
+                selectedTags.includes(tag) && styles.selectedTagText
+              ]}
+            >
+              {tag}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      
       <View style={styles.adFooter}>
         <Text style={styles.adDuration}>{item.duration}</Text>
         <View style={styles.rewardBadge}>
@@ -42,24 +138,17 @@ const HomeScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const renderCategoryItem = ({ item }) => (
-    <TouchableOpacity
-      style={[
-        styles.categoryItem,
-        selectedCategory === item.name && styles.selectedCategory,
-      ]}
-      onPress={() => setSelectedCategory(item.name)}
-    >
-      <Text 
-        style={[
-          styles.categoryText,
-          selectedCategory === item.name && styles.selectedCategoryText,
-        ]}
-      >
-        {item.name}
-      </Text>
-    </TouchableOpacity>
-  );
+  // Filter ads based on selected category and tags
+  const filteredAds = SAMPLE_ADS.filter(ad => {
+    // Category filter
+    const passesCategory = selectedCategory === 'All' || ad.category === selectedCategory;
+    
+    // Tag filter (only apply if tags are selected)
+    const passesTags = selectedTags.length === 0 || 
+      selectedTags.some(tag => ad.tags?.includes(tag));
+    
+    return passesCategory && passesTags;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -74,11 +163,16 @@ const HomeScreen = ({ navigation }) => {
       </View>
       
       <FlatList
-        data={SAMPLE_ADS}
+        data={filteredAds}
         renderItem={renderAdCard}
         keyExtractor={item => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.adsList}
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No ads found for this category</Text>
+          </View>
+        )}
       />
     </SafeAreaView>
   );
@@ -144,6 +238,30 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: '#000',
   },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginVertical: 8,
+  },
+  tagBadge: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  selectedTagBadge: {
+    backgroundColor: '#e0cfff',
+  },
+  tagText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  selectedTagText: {
+    color: '#6200ee',
+    fontWeight: '500',
+  },
   adFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -163,6 +281,18 @@ const styles = StyleSheet.create({
     color: '#4caf50',
     fontWeight: 'bold',
     fontSize: 12,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    height: 200,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
   },
 });
 

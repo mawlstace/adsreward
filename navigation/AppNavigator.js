@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import TabNavigator from './TabNavigator';
 import AuthNavigator from './AuthNavigator';
 import AdViewScreen from '../screens/AdViewScreen';
+import RewardsScreen from '../screens/RewardsScreen';
 
 // Create a simple auth context for local development
 export const LocalAuthContext = createContext();
@@ -24,23 +25,34 @@ const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => {
   const { isAuthenticated } = useLocalAuth();
+  
   console.log('AppNavigator rendering, isAuthenticated:', isAuthenticated);
-React.useEffect(() => {
+  
+  React.useEffect(() => {
     console.log('AppNavigator effect run, isAuthenticated changed to:', isAuthenticated);
   }, [isAuthenticated]);
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isAuthenticated ? (
         <>
           <Stack.Screen name="Main" component={TabNavigator} />
           <Stack.Screen 
-            name="AdView" 
-            component={AdViewScreen} 
-            options={{ 
+            name="AdView"
+            component={AdViewScreen}
+            options={{
               headerShown: true,
               presentation: 'modal',
               title: 'Watch Ad'
-            }} 
+            }}
+          />
+          <Stack.Screen 
+            name="Rewards"
+            component={RewardsScreen}
+            options={{
+              headerShown: true,
+              title: 'My Rewards'
+            }}
           />
         </>
       ) : (
@@ -51,5 +63,3 @@ React.useEffect(() => {
 };
 
 export default AppNavigator;
-
-navigation/AppNavigator.js

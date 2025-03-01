@@ -22,12 +22,20 @@ const AD_DETAILS = {
     reward: 'Buy 1 Get 1 Free',
     promoCode: 'SBUX2FOR1'
   },
-  // ... other ads
+  '3': { 
+    id: '3', 
+    title: 'Wireless Headphones', 
+    company: 'Sony', 
+    description: 'Try our new Wireless Headphones.',
+    duration: 15, 
+    reward: 'Buy 1 Get 1 Free',
+    promoCode: 'Sony1FOR1'
+  }
 };
 
 const AdViewScreen = ({ route, navigation }) => {
-  // Add a default value to ensure route and route.params exist
-  const adId = route?.params?.adId;
+  const { adId } = route.params;
+  const [watched, setWatched] = useState(false);
   const [ad, setAd] = useState(null);
   const [loading, setLoading] = useState(true);
   const [watching, setWatching] = useState(false);
@@ -90,12 +98,11 @@ const AdViewScreen = ({ route, navigation }) => {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Claim the reward and navigate to rewards screen
   const claimReward = () => {
-    // Check if ad exists before proceeding
     if (!ad) return;
     
-    // Here you would normally send a request to the server to claim the reward
-    // For now, we'll just navigate back
+    // Navigate to the Rewards screen with the new reward
     navigation.navigate('Rewards', { 
       newReward: {
         id: ad.id,
@@ -131,7 +138,7 @@ const AdViewScreen = ({ route, navigation }) => {
       </View>
     );
   }
-
+  
   return (
     <View style={styles.container}>
       <View style={styles.adDetails}>

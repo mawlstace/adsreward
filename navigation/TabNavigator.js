@@ -2,9 +2,9 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
-// Import Screens
+// Import your tab screens
 import HomeScreen from '../screens/HomeScreen';
-import RewardsScreen from '../screens/RewardsScreen'; 
+import RewardsScreen from '../screens/RewardsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
@@ -18,7 +18,7 @@ const TabNavigator = () => {
 
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Rewards') {
+          } else if (route.name === 'RewardsTab') {
             iconName = focused ? 'gift' : 'gift-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
@@ -34,17 +34,20 @@ const TabNavigator = () => {
       <Tab.Screen 
         name="Home" 
         component={HomeScreen} 
-        options={{ title: 'Browse Ads' }} 
+        options={{
+          title: 'Ad Rewards'
+        }}
       />
       <Tab.Screen 
-        name="Rewards" 
-        component={RewardsScreen} 
-        options={{ title: 'My Rewards' }} 
+        name="RewardsTab" 
+        component={RewardsScreen}
+        options={{
+          title: 'My Rewards'
+        }} 
       />
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen} 
-        options={{ title: 'My Profile' }} 
       />
     </Tab.Navigator>
   );

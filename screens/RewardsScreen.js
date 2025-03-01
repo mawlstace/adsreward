@@ -244,7 +244,7 @@ const RewardsScreen = ({ route, navigation }) => {
       <FlatList
         data={filteredRewards}
         renderItem={renderRewardItem}
-        keyExtractor={item => item.id}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         contentContainerStyle={styles.rewardsList}
         ListEmptyComponent={renderEmptyList}
       />
