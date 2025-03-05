@@ -1,229 +1,161 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Switch,
-  Alert,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalAuth } from '../navigation/AppNavigator';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch, ActivityIndicator } from 'react-native';
+import { useUser } from '../context/UserContext';
 
-const ProfileScreen = () => {
-  const { setIsAuthenticated } = useLocalAuth();
+// All available categories that match with ads
+const AVAILABLE_CATEGORIES = [
+  'Electronics',
+  'Fashion',
+  'Food',
+  'Sports',
+  'Entertainment',
+  'Education',
+];
+
+const ProfileScreen = ({ navigation }) => {
+  // Get user data from context
+  const { userData, isLoading, userInterests, updateUserInterests } = useUser();
   
-  // This would normally be loaded from a user account
-  const [userProfile, setUserProfile] = useState({
-    name: 'Alex Johnson',
-    email: 'alex.johnson@example.com',
-    interests: ['Electronics', 'Fashion', 'Sports', 'Entertainment'],
-    notifications: true,
-    emailUpdates: false,
-  });
+  // State for managing selected interests (categories)
+  const [selectedInterests, setSelectedInterests] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [editMode, setEditMode] = useState(false);
+  // Load saved interests when component mounts
+  useEffect(() => {
+    setSelectedInterests(userInterests);
+  }, [userInterests]);
 
-  const toggleInterest = (interest) => {
-    if (editMode) {
-      setUserProfile(prevProfile => {
-        if (prevProfile.interests.includes(interest)) {
-          return {
-            ...prevProfile,
-            interests: prevProfile.interests.filter(item => item !== interest)
-          };
-        } else {
-          return {
-            ...prevProfile,
-            interests: [...prevProfile.interests, interest]
-          };
-        }
-      });
-    }
+  // Toggle selection of a category
+  const toggleInterest = (category) => {
+    setSelectedInterests(prev => {
+      if (prev.includes(category)) {
+        return prev.filter(item => item !== category);
+      } else {
+        return [...prev, category];
+      }
+    });
   };
 
-  const toggleNotifications = () => {
-    setUserProfile(prevProfile => ({
-      ...prevProfile,
-      notifications: !prevProfile.notifications
-    }));
+  // Save interests to context
+  const saveInterests = () => {
+    setIsSaving(true);
+    
+    // Update the context with new interests
+    updateUserInterests(selectedInterests);
+    
+    // Simulate a save delay for UX feedback
+    setTimeout(() => {
+      setIsSaving(false);
+      // No alert, just visual feedback via button change
+    }, 500);
   };
 
-  const toggleEmailUpdates = () => {
-    setUserProfile(prevProfile => ({
-      ...prevProfile,
-      emailUpdates: !prevProfile.emailUpdates
-    }));
-  };
-
-  const handleSaveProfile = () => {
-    // Would normally save to backend here
-    setEditMode(false);
-    Alert.alert(
-      'Profile Updated',
-      'Your profile has been successfully updated.'
-    );
-  };
-
-  const handleSignOut = () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: () => {
-            // Sign out using the local auth context
-            setIsAuthenticated(false);
-            console.log('User signed out');
-          }
-        }
-      ]
-    );
-  };
-
-  // Available interest categories
-  const allInterests = [
-    'Electronics', 'Fashion', 'Food', 'Sports', 
-    'Entertainment', 'Travel', 'Education', 'Health'
+  // Sample activity data - in real app, fetch from API
+  const activityData = [
+    { id: '1', action: 'Watched ad', item: 'Nike Running Shoes', date: '1 day ago' },
+    { id: '2', action: 'Claimed reward', item: 'Starbucks - Buy 1 Get 1 Free', date: '1 day ago' },
+    { id: '3', action: 'Used reward', item: 'Sony - $10 OFF', date: '3 days ago' },
   ];
 
+  const renderActivityItem = ({ id, action, item, date }) => (
+    <View key={id} style={styles.activityItem}>
+      <View style={styles.activityDot} />
+      <View style={styles.activityContent}>
+        <Text style={styles.activityAction}>{action}</Text>
+        <Text style={styles.activityItemText}>{item}</Text>
+        <Text style={styles.activityDate}>{date}</Text>
+      </View>
+    </View>
+  );
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#6200ee" />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.profileHeader}>
-        <View style={styles.profileInfo}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {userProfile.name.split(' ').map(n => n[0]).join('')}
-            </Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>My Profile</Text>
+        </View>
+        
+        <View style={styles.profileSection}>
+          <View style={styles.avatarContainer}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{userData.name.charAt(0)}</Text>
+            </View>
           </View>
-          <View>
-            <Text style={styles.userName}>{userProfile.name}</Text>
-            <Text style={styles.userEmail}>{userProfile.email}</Text>
+          
+          <Text style={styles.userName}>{userData.name}</Text>
+          <Text style={styles.userEmail}>{userData.email}</Text>
+          <Text style={styles.joinDate}>Member since {userData.joinDate}</Text>
+        </View>
+        
+        <View style={styles.statsSection}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{userData.watchedAds}</Text>
+            <Text style={styles.statLabel}>Ads Watched</Text>
+          </View>
+          
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{userData.rewardsEarned}</Text>
+            <Text style={styles.statLabel}>Rewards Earned</Text>
+          </View>
+          
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{userData.rewardsUsed}</Text>
+            <Text style={styles.statLabel}>Rewards Used</Text>
           </View>
         </View>
         
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => setEditMode(!editMode)}
-        >
-          <Text style={styles.editButtonText}>
-            {editMode ? 'Cancel' : 'Edit'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>My Interests</Text>
-        <Text style={styles.sectionSubtitle}>
-          Receive ads and offers based on your interests
-        </Text>
-        
-        <View style={styles.interestsContainer}>
-          {allInterests.map(interest => (
-            <TouchableOpacity
-              key={interest}
-              style={[
-                styles.interestBadge,
-                userProfile.interests.includes(interest) && styles.selectedInterest,
-                editMode && styles.editableInterest,
-              ]}
-              onPress={() => toggleInterest(interest)}
-              disabled={!editMode}
-            >
-              <Text
-                style={[
-                  styles.interestText,
-                  userProfile.interests.includes(interest) && styles.selectedInterestText,
-                ]}
-              >
-                {interest}
-              </Text>
-              {editMode && userProfile.interests.includes(interest) && (
-                <Ionicons name="close-circle" size={16} color="#fff" style={styles.removeIcon} />
-              )}
-            </TouchableOpacity>
+        {/* Interests Section */}
+        <View style={styles.interestsSection}>
+          <Text style={styles.sectionTitle}>My Interests</Text>
+          <Text style={styles.interestsSubtitle}>Select categories of ads you're interested in</Text>
+          
+          {AVAILABLE_CATEGORIES.map(category => (
+            <View key={category} style={styles.interestItem}>
+              <Text style={styles.interestLabel}>{category}</Text>
+              <Switch
+                value={selectedInterests.includes(category)}
+                onValueChange={() => toggleInterest(category)}
+                trackColor={{ false: '#d1d1d1', true: '#a992e0' }}
+                thumbColor={selectedInterests.includes(category) ? '#6200ee' : '#f4f3f4'}
+              />
+            </View>
           ))}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preferences</Text>
-        
-        <View style={styles.preferenceItem}>
-          <View>
-            <Text style={styles.preferenceTitle}>Push Notifications</Text>
-            <Text style={styles.preferenceDescription}>
-              Receive notifications about new ads and rewards
+          
+          <TouchableOpacity 
+            style={[styles.saveButton, isSaving && styles.savingButton]}
+            onPress={saveInterests}
+            disabled={isSaving}
+          >
+            <Text style={styles.saveButtonText}>
+              {isSaving ? 'Saving...' : 'Save Interests'}
             </Text>
-          </View>
-          <Switch
-            value={userProfile.notifications}
-            onValueChange={toggleNotifications}
-            trackColor={{ false: '#d1d1d1', true: '#bbb5f6' }}
-            thumbColor={userProfile.notifications ? '#6200ee' : '#f4f3f4'}
-          />
+          </TouchableOpacity>
         </View>
         
-        <View style={styles.divider} />
-        
-        <View style={styles.preferenceItem}>
-          <View>
-            <Text style={styles.preferenceTitle}>Email Updates</Text>
-            <Text style={styles.preferenceDescription}>
-              Receive weekly emails about new offers
-            </Text>
-          </View>
-          <Switch
-            value={userProfile.emailUpdates}
-            onValueChange={toggleEmailUpdates}
-            trackColor={{ false: '#d1d1d1', true: '#bbb5f6' }}
-            thumbColor={userProfile.emailUpdates ? '#6200ee' : '#f4f3f4'}
-          />
+        <View style={styles.activitySection}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          
+          {activityData.length > 0 ? (
+            <View style={styles.activityList}>
+              {activityData.map(item => renderActivityItem(item))}
+            </View>
+          ) : (
+            <View style={styles.emptyActivity}>
+              <Text style={styles.emptyText}>No activity yet</Text>
+            </View>
+          )}
         </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account</Text>
-        
-        <TouchableOpacity style={styles.accountItem}>
-          <Ionicons name="shield-checkmark-outline" size={24} color="#6200ee" />
-          <Text style={styles.accountItemText}>Privacy Settings</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.accountItem}>
-          <Ionicons name="help-circle-outline" size={24} color="#6200ee" />
-          <Text style={styles.accountItemText}>Help & Support</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.accountItem}
-          onPress={handleSignOut}
-        >
-          <Ionicons name="log-out-outline" size={24} color="#f44336" />
-          <Text style={[styles.accountItemText, styles.signOutText]}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
-
-      {editMode && (
-        <TouchableOpacity 
-          style={styles.saveButton}
-          onPress={handleSaveProfile}
-        >
-          <Text style={styles.saveButtonText}>Save Changes</Text>
-        </TouchableOpacity>
-      )}
-      
-      <View style={styles.footer}>
-        <Text style={styles.versionText}>App Version 1.0.0</Text>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
@@ -232,155 +164,173 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  profileHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    backgroundColor: '#f5f5f5',
   },
-  profileInfo: {
-    flexDirection: 'row',
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+  },
+  header: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  profileSection: {
+    backgroundColor: '#fff',
+    padding: 20,
     alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarContainer: {
+    marginBottom: 16,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#6200ee',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   avatarText: {
-    color: '#fff',
-    fontSize: 16,
+    fontSize: 32,
     fontWeight: 'bold',
+    color: '#fff',
   },
   userName: {
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#333',
+    marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
     color: '#666',
+    marginBottom: 4,
   },
-  editButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#6200ee',
+  joinDate: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 16,
   },
-  editButtonText: {
-    color: '#6200ee',
-    fontWeight: '500',
-  },
-  section: {
+  statsSection: {
+    flexDirection: 'row',
     backgroundColor: '#fff',
     padding: 16,
-    marginVertical: 8,
+    marginBottom: 16,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#6200ee',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  interestsSection: {
+    backgroundColor: '#fff',
+    padding: 16,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 8,
   },
-  sectionSubtitle: {
+  interestsSubtitle: {
     fontSize: 14,
     color: '#666',
     marginBottom: 16,
   },
-  interestsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  interestBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  selectedInterest: {
-    backgroundColor: '#6200ee',
-  },
-  editableInterest: {
-    borderWidth: 1,
-    borderColor: '#d1d1d1',
-  },
-  interestText: {
-    color: '#666',
-    fontWeight: '500',
-  },
-  selectedInterestText: {
-    color: '#fff',
-  },
-  removeIcon: {
-    marginLeft: 4,
-  },
-  preferenceItem: {
+  interestItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  preferenceTitle: {
+  interestLabel: {
     fontSize: 16,
-    fontWeight: '500',
     color: '#333',
-    marginBottom: 4,
-  },
-  preferenceDescription: {
-    fontSize: 14,
-    color: '#666',
-    maxWidth: '80%',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#eee',
-  },
-  accountItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  accountItemText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-    marginLeft: 12,
-  },
-  signOutText: {
-    color: '#f44336',
   },
   saveButton: {
     backgroundColor: '#6200ee',
-    padding: 16,
-    margin: 16,
     borderRadius: 8,
+    padding: 14,
     alignItems: 'center',
+    marginTop: 20,
+  },
+  savingButton: {
+    backgroundColor: '#a992e0',
   },
   saveButtonText: {
     color: '#fff',
-    fontSize: 16,
     fontWeight: 'bold',
+    fontSize: 16,
   },
-  footer: {
+  activitySection: {
+    backgroundColor: '#fff',
     padding: 16,
+    marginBottom: 16,
+  },
+  activityList: {
+    marginLeft: 8,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  activityDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#6200ee',
+    marginTop: 5,
+    marginRight: 10,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityAction: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  activityItemText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  activityDate: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  emptyActivity: {
+    padding: 20,
     alignItems: 'center',
   },
-  versionText: {
-    color: '#999',
-    fontSize: 12,
-  },
+  emptyText: {
+    fontSize: 14,
+    color: '#666',
+  }
 });
 
 export default ProfileScreen;

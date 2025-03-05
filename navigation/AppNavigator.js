@@ -1,30 +1,15 @@
-import React, { useState, createContext, useContext } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import TabNavigator from './TabNavigator';
 import AuthNavigator from './AuthNavigator';
 import AdViewScreen from '../screens/AdViewScreen';
 import RewardsScreen from '../screens/RewardsScreen';
-
-// Create a simple auth context for local development
-export const LocalAuthContext = createContext();
-
-export const LocalAuthProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
-  return (
-    <LocalAuthContext.Provider value={{ isAuthenticated, setIsAuthenticated }}>
-      {children}
-    </LocalAuthContext.Provider>
-  );
-};
-
-// Hook to use auth context
-export const useLocalAuth = () => useContext(LocalAuthContext);
+import { useAuth } from '../context/AuthContext';
 
 const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => {
-  const { isAuthenticated } = useLocalAuth();
+  const { isAuthenticated } = useAuth();
   
   console.log('AppNavigator rendering, isAuthenticated:', isAuthenticated);
   

@@ -35,12 +35,16 @@ const AD_DETAILS = {
 
 const AdViewScreen = ({ route, navigation }) => {
   const { adId } = route.params;
-  const [watched, setWatched] = useState(false);
   const [ad, setAd] = useState(null);
   const [loading, setLoading] = useState(true);
   const [watching, setWatching] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [completed, setCompleted] = useState(false);
+  const [claimInProgress, setClaimInProgress] = useState(false);
+
+  // For development, reduce the duration to make testing easier
+  const DEV_MODE = true;
+  const durationMultiplier = DEV_MODE ? 0.1 : 1; // 10% of actual time in dev mode
 
   // Simulate fetching ad details
   useEffect(() => {
@@ -53,15 +57,13 @@ const AdViewScreen = ({ route, navigation }) => {
         } else {
           // Handle invalid adId
           console.error('Invalid adId:', adId);
-          // You might want to navigate back or show an error
-          // navigation.goBack();
         }
         setLoading(false);
-      }, 1000);
+      }, 500); // Reduced for faster testing
     };
     
     fetchAdDetails();
-  }, [adId, navigation]);
+  }, [adId]);
 
   // Simulate ad watching timer
   useEffect(() => {
@@ -87,7 +89,8 @@ const AdViewScreen = ({ route, navigation }) => {
 
   const startWatchingAd = () => {
     if (ad) {
-      setTimeRemaining(ad.duration);
+      // Apply duration multiplier for dev mode
+      setTimeRemaining(Math.ceil(ad.duration * durationMultiplier));
       setWatching(true);
     }
   };
@@ -100,18 +103,26 @@ const AdViewScreen = ({ route, navigation }) => {
 
   // Claim the reward and navigate to rewards screen
   const claimReward = () => {
-    if (!ad) return;
+    if (!ad || claimInProgress) return;
+    
+    setClaimInProgress(true);
+    
+    // Create reward with all necessary data
+    const newReward = {
+      id: ad.id,
+      company: ad.company,
+      reward: ad.reward,
+      promoCode: ad.promoCode,
+      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+    };
+    
+    console.log("Claiming reward:", newReward);
     
     // Navigate to the Rewards screen with the new reward
-    navigation.navigate('Rewards', { 
-      newReward: {
-        id: ad.id,
-        company: ad.company,
-        reward: ad.reward,
-        promoCode: ad.promoCode,
-        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
-      }
-    });
+    setTimeout(() => {
+      navigation.navigate('Rewards', { newReward });
+      setClaimInProgress(false);
+    }, 500); // Short delay to show the claiming state
   };
 
   if (loading) {
@@ -159,7 +170,9 @@ const AdViewScreen = ({ route, navigation }) => {
             onPress={startWatchingAd}
           >
             <AntDesign name="playcircleo" size={48} color="#6200ee" />
-            <Text style={styles.startButtonText}>Watch Ad ({ad.duration}s)</Text>
+            <Text style={styles.startButtonText}>
+              Watch Ad ({Math.ceil(ad.duration * durationMultiplier)}s)
+            </Text>
           </TouchableOpacity>
         ) : watching ? (
           <View style={styles.watchingContainer}>
@@ -179,10 +192,16 @@ const AdViewScreen = ({ route, navigation }) => {
               You've earned: {ad.reward}
             </Text>
             <TouchableOpacity 
-              style={styles.claimButton}
+              style={[
+                styles.claimButton,
+                claimInProgress && styles.claimingButton
+              ]}
               onPress={claimReward}
+              disabled={claimInProgress}
             >
-              <Text style={styles.claimButtonText}>Claim Reward</Text>
+              <Text style={styles.claimButtonText}>
+                {claimInProgress ? 'Claiming...' : 'Claim Reward'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -315,6 +334,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+  },
+  claimingButton: {
+    backgroundColor: '#9c7de3',
   },
   claimButtonText: {
     color: '#fff',
