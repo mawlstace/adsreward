@@ -17,31 +17,53 @@ const RewardsScreen = ({ route, navigation }) => {
     loadRewards();
   }, []);
   
-  // Add new reward when received from navigation params
+  // Handle new reward - separated from the main useEffect to avoid dependency issues
   useEffect(() => {
-    if (newReward) {
-      console.log("New reward received:", newReward);
-      
-      // Make sure we're not adding duplicates by using a unique ID
-      const uniqueId = `${newReward.id}-${Date.now()}`;
-      
-      // Add the reward with a unique ID and timestamp
-      const rewardToAdd = {
-        ...newReward,
-        uniqueId: uniqueId,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Add to existing rewards
-      const updatedRewards = [...rewards, rewardToAdd];
-      setRewards(updatedRewards);
-      
-      // Save to AsyncStorage
-      saveRewards(updatedRewards);
-      
-      // Show feedback
-      showTemporaryFeedback('Reward added!');
+    async function handleNewReward() {
+      if (newReward) {
+        console.log("New reward received:", newReward);
+        
+        // Load current rewards from storage first to ensure we have the latest
+        let currentRewards = [];
+        try {
+          const savedRewardsStr = await AsyncStorage.getItem('userRewards');
+          if (savedRewardsStr) {
+            currentRewards = JSON.parse(savedRewardsStr);
+          }
+        } catch (error) {
+          console.error('Error loading rewards during add:', error);
+        }
+        
+        // Make sure we're not adding duplicates by using a unique ID
+        const uniqueId = `${newReward.id}-${Date.now()}`;
+        
+        // Add the reward with a unique ID and timestamp
+        const rewardToAdd = {
+          ...newReward,
+          uniqueId: uniqueId,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Add to existing rewards
+        const updatedRewards = [...currentRewards, rewardToAdd];
+        
+        // Save to AsyncStorage
+        try {
+          console.log("Saving rewards:", updatedRewards);
+          await AsyncStorage.setItem('userRewards', JSON.stringify(updatedRewards));
+          
+          // Update state after successful save
+          setRewards(updatedRewards);
+          
+          // Show feedback
+          showTemporaryFeedback('Reward added!');
+        } catch (error) {
+          console.error('Error saving new reward:', error);
+        }
+      }
     }
+    
+    handleNewReward();
   }, [newReward]);
   
   // Show feedback message temporarily
@@ -82,10 +104,10 @@ const RewardsScreen = ({ route, navigation }) => {
   };
   
   // Delete a reward
-  const deleteReward = (uniqueId) => {
+  const deleteReward = async (uniqueId) => {
     const updatedRewards = rewards.filter(reward => reward.uniqueId !== uniqueId);
     setRewards(updatedRewards);
-    saveRewards(updatedRewards);
+    await saveRewards(updatedRewards);
   };
   
   // Use a reward
@@ -93,11 +115,13 @@ const RewardsScreen = ({ route, navigation }) => {
     // Find the reward
     const reward = rewards.find(r => r.uniqueId === uniqueId);
     
-    // Show promo code as feedback
-    showTemporaryFeedback(`Code: ${reward.promoCode} is now being used`);
-    
-    // In a real app, you might mark it as used instead of deleting it
-    deleteReward(uniqueId);
+    if (reward) {
+      // Show promo code as feedback
+      showTemporaryFeedback(`Code: ${reward.promoCode} is now being used`);
+      
+      // In a real app, you might mark it as used instead of deleting it
+      deleteReward(uniqueId);
+    }
   };
 
   const renderRewardCard = ({ item }) => {

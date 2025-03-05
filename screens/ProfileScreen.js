@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch, ActivityIndicator } from 'react-native';
-import { useUser } from '../context/UserContext';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // All available categories that match with ads
 const AVAILABLE_CATEGORIES = [
@@ -13,48 +13,120 @@ const AVAILABLE_CATEGORIES = [
 ];
 
 const ProfileScreen = ({ navigation }) => {
-  // Get user data from context
-  const { userData, isLoading, userInterests, updateUserInterests } = useUser();
-  
+  // User data with dynamic stats
+  const [userData, setUserData] = useState({
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    joinDate: 'March 2025',
+    watchedAds: 0,
+    rewardsEarned: 0,
+    rewardsUsed: 0,
+  });
+
   // State for managing selected interests (categories)
   const [selectedInterests, setSelectedInterests] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Load saved interests when component mounts
+  // Load user data and interests on component mount
   useEffect(() => {
-    setSelectedInterests(userInterests);
-  }, [userInterests]);
+    const loadUserData = async () => {
+      try {
+        // Load interests
+        const savedInterests = await AsyncStorage.getItem('userInterests');
+        if (savedInterests) {
+          setSelectedInterests(JSON.parse(savedInterests));
+        }
 
-  // Toggle selection of a category
-  const toggleInterest = (category) => {
-    setSelectedInterests(prev => {
-      if (prev.includes(category)) {
-        return prev.filter(item => item !== category);
-      } else {
-        return [...prev, category];
+        // Load watched ads count
+        const watchedAds = await AsyncStorage.getItem('watchedAdsCount');
+        let watchedAdsCount = 0;
+        if (watchedAds) {
+          watchedAdsCount = parseInt(watchedAds, 10);
+        }
+
+        // Load rewards count from actual rewards data
+        const savedRewards = await AsyncStorage.getItem('userRewards');
+        let earnedCount = 0;
+        let usedCount = 0;
+        
+        if (savedRewards) {
+          const rewardsData = JSON.parse(savedRewards);
+          earnedCount = rewardsData.length;
+          
+          // Load used rewards count
+          const usedRewards = await AsyncStorage.getItem('usedRewardsCount');
+          if (usedRewards) {
+            usedCount = parseInt(usedRewards, 10);
+          }
+        }
+
+        // Update user data with actual stats
+        setUserData(prevData => ({
+          ...prevData,
+          watchedAds: watchedAdsCount,
+          rewardsEarned: earnedCount,
+          rewardsUsed: usedCount
+        }));
+      } catch (error) {
+        console.error('Error loading user data:', error);
       }
-    });
+    };
+
+    loadUserData();
+  }, []);
+
+  // Toggle selection of a category and save immediately
+  const toggleInterest = async (category) => {
+    const newInterests = [...selectedInterests];
+    
+    if (selectedInterests.includes(category)) {
+      // Remove the category
+      const index = newInterests.indexOf(category);
+      if (index > -1) {
+        newInterests.splice(index, 1);
+      }
+    } else {
+      // Add the category
+      newInterests.push(category);
+    }
+    
+    // Update state
+    setSelectedInterests(newInterests);
+    
+    // Save immediately
+    try {
+      await AsyncStorage.setItem('userInterests', JSON.stringify(newInterests));
+    } catch (error) {
+      console.error('Error saving interest toggle:', error);
+    }
   };
 
-  // Save interests to context
-  const saveInterests = () => {
+  // Save interests to AsyncStorage with visual feedback
+  const saveInterests = async () => {
     setIsSaving(true);
-    
-    // Update the context with new interests
-    updateUserInterests(selectedInterests);
-    
-    // Simulate a save delay for UX feedback
-    setTimeout(() => {
+    try {
+      await AsyncStorage.setItem('userInterests', JSON.stringify(selectedInterests));
+      
+      // Show success state
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 2000);
+    } catch (error) {
+      console.error('Error saving interests:', error);
+    } finally {
       setIsSaving(false);
-      // No alert, just visual feedback via button change
-    }, 500);
+    }
   };
 
-  // Sample activity data - in real app, fetch from API
+  // Sample activity data - in a real app, this would come from a database or API
   const activityData = [
     { id: '1', action: 'Watched ad', item: 'Nike Running Shoes', date: '1 day ago' },
     { id: '2', action: 'Claimed reward', item: 'Starbucks - Buy 1 Get 1 Free', date: '1 day ago' },
     { id: '3', action: 'Used reward', item: 'Sony - $10 OFF', date: '3 days ago' },
+    { id: '4', action: 'Watched ad', item: 'Spotify Premium Subscription', date: '5 days ago' },
+    { id: '5', action: 'Claimed reward', item: 'Spotify - 1 Month Free', date: '5 days ago' },
   ];
 
   const renderActivityItem = ({ id, action, item, date }) => (
@@ -67,15 +139,6 @@ const ProfileScreen = ({ navigation }) => {
       </View>
     </View>
   );
-
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#6200ee" />
-        <Text style={styles.loadingText}>Loading profile...</Text>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -131,12 +194,16 @@ const ProfileScreen = ({ navigation }) => {
           ))}
           
           <TouchableOpacity 
-            style={[styles.saveButton, isSaving && styles.savingButton]}
+            style={[
+              styles.saveButton, 
+              isSaving && styles.savingButton,
+              saveSuccess && styles.successButton
+            ]}
             onPress={saveInterests}
             disabled={isSaving}
           >
             <Text style={styles.saveButtonText}>
-              {isSaving ? 'Saving...' : 'Save Interests'}
+              {isSaving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save All Interests'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -144,15 +211,9 @@ const ProfileScreen = ({ navigation }) => {
         <View style={styles.activitySection}>
           <Text style={styles.sectionTitle}>Recent Activity</Text>
           
-          {activityData.length > 0 ? (
-            <View style={styles.activityList}>
-              {activityData.map(item => renderActivityItem(item))}
-            </View>
-          ) : (
-            <View style={styles.emptyActivity}>
-              <Text style={styles.emptyText}>No activity yet</Text>
-            </View>
-          )}
+          <View style={styles.activityList}>
+            {activityData.map(item => renderActivityItem(item))}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -163,16 +224,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#666',
   },
   header: {
     padding: 16,
@@ -281,6 +332,9 @@ const styles = StyleSheet.create({
   savingButton: {
     backgroundColor: '#a992e0',
   },
+  successButton: {
+    backgroundColor: '#4caf50',
+  },
   saveButtonText: {
     color: '#fff',
     fontWeight: 'bold',
@@ -323,14 +377,6 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 4,
   },
-  emptyActivity: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#666',
-  }
 });
 
 export default ProfileScreen;

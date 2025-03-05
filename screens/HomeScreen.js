@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
-import { useUser } from '../context/UserContext';
+import { useIsFocused } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Sample data
 const SAMPLE_ADS = [
@@ -49,18 +50,10 @@ const SAMPLE_ADS = [
     duration: '60s', 
     reward: '30% OFF' 
   },
-  {
-    id: '6',
-    title: 'Summer Collection',
-    company: 'Zara',
-    category: 'Fashion',
-    tags: ['Clothing', 'Summer', 'Trends'],
-    duration: '25s',
-    reward: '20% OFF'
-  }
 ];
 
-const CATEGORIES = [
+// All available categories
+const ALL_CATEGORIES = [
   { id: '1', name: 'All' },
   { id: '2', name: 'Electronics' },
   { id: '3', name: 'Fashion' },
@@ -73,9 +66,53 @@ const CATEGORIES = [
 const HomeScreen = ({ navigation }) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedTags, setSelectedTags] = useState([]);
+  const [userInterests, setUserInterests] = useState([]);
+  const [filteredCategories, setFilteredCategories] = useState([ALL_CATEGORIES[0]]);
   
-  // Get user interests from context
-  const { userInterests, filterByInterests, setFilterByInterests } = useUser();
+  // useIsFocused will return true when the screen is focused
+  const isFocused = useIsFocused();
+
+  // Load user interests when the screen comes into focus
+  useEffect(() => {
+    const loadUserInterests = async () => {
+      try {
+        const savedInterests = await AsyncStorage.getItem('userInterests');
+        if (savedInterests) {
+          const interests = JSON.parse(savedInterests);
+          setUserInterests(interests);
+          
+          // Create filtered categories based on user interests
+          // Always include "All" category
+          const filtered = [ALL_CATEGORIES[0]];
+          
+          // Add categories from ALL_CATEGORIES that match user interests
+          ALL_CATEGORIES.forEach(category => {
+            if (category.name !== 'All' && interests.includes(category.name)) {
+              filtered.push(category);
+            }
+          });
+          
+          setFilteredCategories(filtered);
+          
+          // If selected category is not in user interests, reset to "All"
+          if (selectedCategory !== 'All' && !interests.includes(selectedCategory)) {
+            setSelectedCategory('All');
+          }
+        } else {
+          // If no interests are saved, show all categories
+          setFilteredCategories(ALL_CATEGORIES);
+        }
+      } catch (error) {
+        console.error('Error loading user interests:', error);
+        // Show all categories as a fallback
+        setFilteredCategories(ALL_CATEGORIES);
+      }
+    };
+
+    if (isFocused) {
+      loadUserInterests();
+    }
+  }, [isFocused]);
 
   // Toggle tag selection
   const toggleTag = (tag) => {
@@ -151,45 +188,23 @@ const HomeScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  // Filter ads based on selected category, tags and user interests
+  // Filter ads based on selected category and tags
   const filteredAds = SAMPLE_ADS.filter(ad => {
-    // First apply category filter
+    // Category filter
     const passesCategory = selectedCategory === 'All' || ad.category === selectedCategory;
     
-    // Then apply tag filter
+    // Tag filter
     const passesTags = selectedTags.length === 0 || 
       selectedTags.some(tag => ad.tags?.includes(tag));
     
-    // Then apply user interests filter if enabled
-    // Only apply if userInterests is not empty
-    const passesInterests = !filterByInterests || 
-      userInterests.length === 0 || 
-      userInterests.includes(ad.category);
-    
-    return passesCategory && passesTags && passesInterests;
+    return passesCategory && passesTags;
   });
 
   return (
     <SafeAreaView style={styles.container}>
-      {userInterests.length > 0 && (
-        <View style={styles.interestsContainer}>
-          <Text style={styles.interestsTitle}>
-            Your Interests: {userInterests.join(', ')}
-          </Text>
-          <TouchableOpacity 
-            style={styles.toggleButton}
-            onPress={() => setFilterByInterests(!filterByInterests)}
-          >
-            <Text style={styles.toggleButtonText}>
-              {filterByInterests ? 'Show All Ads' : 'Show Only My Interests'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      
       <View style={styles.categoriesContainer}>
         <FlatList
-          data={CATEGORIES}
+          data={filteredCategories}
           renderItem={renderCategoryItem}
           keyExtractor={item => item.id}
           horizontal
@@ -206,9 +221,7 @@ const HomeScreen = ({ navigation }) => {
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
-              {filterByInterests && userInterests.length > 0
-                ? "No ads match your interests in this category. Try showing all ads or update your interests in your profile."
-                : "No ads found for this category or tag selection."}
+              No ads found for this category or tag selection.
             </Text>
           </View>
         )}
@@ -221,30 +234,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-  },
-  interestsContainer: {
-    backgroundColor: '#f0f0f0',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  interestsTitle: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-    marginBottom: 6,
-  },
-  toggleButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#6200ee',
-    borderRadius: 16,
-  },
-  toggleButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
   },
   categoriesContainer: {
     paddingVertical: 10,

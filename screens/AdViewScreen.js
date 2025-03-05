@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { AntDesign } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Sample data - will be replaced with API data later
 const AD_DETAILS = {
@@ -42,10 +43,6 @@ const AdViewScreen = ({ route, navigation }) => {
   const [completed, setCompleted] = useState(false);
   const [claimInProgress, setClaimInProgress] = useState(false);
 
-  // For development, reduce the duration to make testing easier
-  const DEV_MODE = true;
-  const durationMultiplier = DEV_MODE ? 0.1 : 1; // 10% of actual time in dev mode
-
   // Simulate fetching ad details
   useEffect(() => {
     const fetchAdDetails = () => {
@@ -59,7 +56,7 @@ const AdViewScreen = ({ route, navigation }) => {
           console.error('Invalid adId:', adId);
         }
         setLoading(false);
-      }, 500); // Reduced for faster testing
+      }, 500);
     };
     
     fetchAdDetails();
@@ -75,6 +72,8 @@ const AdViewScreen = ({ route, navigation }) => {
           if (prevTime <= 1) {
             setWatching(false);
             setCompleted(true);
+            // Increment watched ads counter when ad completes
+            incrementWatchedAdsCount();
             return 0;
           }
           return prevTime - 1;
@@ -87,10 +86,29 @@ const AdViewScreen = ({ route, navigation }) => {
     };
   }, [watching, timeRemaining]);
 
+  // Increment watched ads count in AsyncStorage
+  const incrementWatchedAdsCount = async () => {
+    try {
+      // Get current count
+      const currentCount = await AsyncStorage.getItem('watchedAdsCount');
+      let newCount = 1; // Default to 1 if no previous count exists
+      
+      if (currentCount) {
+        newCount = parseInt(currentCount, 10) + 1;
+      }
+      
+      // Save new count
+      await AsyncStorage.setItem('watchedAdsCount', newCount.toString());
+      console.log('Watched ads count updated to:', newCount);
+    } catch (error) {
+      console.error('Error updating watched ads count:', error);
+    }
+  };
+
   const startWatchingAd = () => {
     if (ad) {
-      // Apply duration multiplier for dev mode
-      setTimeRemaining(Math.ceil(ad.duration * durationMultiplier));
+      // Use the full duration without any multiplier
+      setTimeRemaining(ad.duration);
       setWatching(true);
     }
   };
@@ -102,27 +120,32 @@ const AdViewScreen = ({ route, navigation }) => {
   };
 
   // Claim the reward and navigate to rewards screen
-  const claimReward = () => {
+  const claimReward = async () => {
     if (!ad || claimInProgress) return;
     
     setClaimInProgress(true);
     
-    // Create reward with all necessary data
-    const newReward = {
-      id: ad.id,
-      company: ad.company,
-      reward: ad.reward,
-      promoCode: ad.promoCode,
-      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
-    };
-    
-    console.log("Claiming reward:", newReward);
-    
-    // Navigate to the Rewards screen with the new reward
-    setTimeout(() => {
-      navigation.navigate('Rewards', { newReward });
+    try {
+      // Create reward with all necessary data
+      const newReward = {
+        id: ad.id,
+        company: ad.company,
+        reward: ad.reward,
+        promoCode: ad.promoCode,
+        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+      };
+      
+      console.log("Claiming reward:", newReward);
+      
+      // Navigate to the Rewards screen with the new reward
+      setTimeout(() => {
+        navigation.navigate('Rewards', { newReward });
+        setClaimInProgress(false);
+      }, 300); // Reduced delay for faster response
+    } catch (error) {
+      console.error('Error claiming reward:', error);
       setClaimInProgress(false);
-    }, 500); // Short delay to show the claiming state
+    }
   };
 
   if (loading) {
@@ -171,7 +194,7 @@ const AdViewScreen = ({ route, navigation }) => {
           >
             <AntDesign name="playcircleo" size={48} color="#6200ee" />
             <Text style={styles.startButtonText}>
-              Watch Ad ({Math.ceil(ad.duration * durationMultiplier)}s)
+              Watch Ad ({ad.duration}s)
             </Text>
           </TouchableOpacity>
         ) : watching ? (
