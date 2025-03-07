@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Create the context
 export const UserContext = createContext();
@@ -10,39 +11,78 @@ export const UserProvider = ({ children }) => {
   const [userData, setUserData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Simulate fetching user data from API
+  // Load user data and preferences on mount
   useEffect(() => {
-    const fetchUserData = async () => {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Simulated API response
-      const data = {
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        joinDate: 'March 2025',
-        watchedAds: 0,
-        rewardsEarned: 0,
-        rewardsUsed: 0,
-      };
-      
-      setUserData(data);
-      setIsLoading(false);
+    const loadUserData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Load user interests
+        const savedInterests = await AsyncStorage.getItem('userInterests');
+        if (savedInterests) {
+          setUserInterests(JSON.parse(savedInterests));
+          console.log("UserContext: Loaded interests:", JSON.parse(savedInterests));
+        }
+        
+        // Load watched ads count
+        const watchedAds = await AsyncStorage.getItem('watchedAdsCount');
+        let watchedAdsCount = 0;
+        if (watchedAds) {
+          watchedAdsCount = parseInt(watchedAds, 10);
+        }
+        
+        // Load rewards data
+        const savedRewards = await AsyncStorage.getItem('userRewards');
+        let earnedCount = 0;
+        if (savedRewards) {
+          const rewardsData = JSON.parse(savedRewards);
+          earnedCount = rewardsData.length;
+        }
+        
+        // Load used rewards count
+        const usedRewards = await AsyncStorage.getItem('usedRewardsCount');
+        let usedCount = 0;
+        if (usedRewards) {
+          usedCount = parseInt(usedRewards, 10);
+        }
+        
+        // Create user data object
+        const data = {
+          name: 'John Doe',
+          email: 'john.doe@example.com',
+          joinDate: 'March 2025',
+          watchedAds: watchedAdsCount,
+          rewardsEarned: earnedCount,
+          rewardsUsed: usedCount,
+        };
+        
+        setUserData(data);
+      } catch (error) {
+        console.error('Error loading user data in context:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
     
-    fetchUserData();
+    loadUserData();
   }, []);
 
   // Update user data (like incrementing watched ads)
   const updateUserData = (newData) => {
-    setUserData(prev => ({
-      ...prev,
-      ...newData
-    }));
+    console.log("UserContext: Updating user data:", newData);
+    setUserData(prev => {
+      const updated = {
+        ...prev,
+        ...newData
+      };
+      console.log("UserContext: Updated user data:", updated);
+      return updated;
+    });
   };
 
   // Update user interests
   const updateUserInterests = (interests) => {
+    console.log("UserContext: Setting interests to:", interests);
     setUserInterests(interests);
   };
 
@@ -56,7 +96,7 @@ export const UserProvider = ({ children }) => {
     userInterests,
     updateUserInterests,
     filterByInterests,
-    setFilterByInterests,
+    setFilterByInterests, 
     toggleInterestFiltering,
     userData,
     updateUserData,

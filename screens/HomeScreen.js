@@ -1,118 +1,102 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  TouchableOpacity, 
+  SafeAreaView, 
+  Image,
+  ActivityIndicator,
+  RefreshControl
+} from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Sample data
-const SAMPLE_ADS = [
-  { 
-    id: '1', 
-    title: 'Nike Running Shoes', 
-    company: 'Nike', 
-    category: 'Sports', 
-    tags: ['Shoes', 'Running', 'Athletic'], 
-    duration: '30s', 
-    reward: '15% OFF' 
-  },
-  { 
-    id: '2', 
-    title: 'New Coffee Blend', 
-    company: 'Starbucks', 
-    category: 'Food', 
-    tags: ['Coffee', 'Beverages', 'Hot Drinks'], 
-    duration: '15s', 
-    reward: 'Buy 1 Get 1 Free' 
-  },
-  { 
-    id: '3', 
-    title: 'Wireless Headphones', 
-    company: 'Sony', 
-    category: 'Electronics', 
-    tags: ['Audio', 'Wireless', 'Tech'], 
-    duration: '45s', 
-    reward: '$10 OFF' 
-  },
-  { 
-    id: '4', 
-    title: 'Premium Subscription', 
-    company: 'Spotify', 
-    category: 'Entertainment', 
-    tags: ['Music', 'Streaming', 'Premium'], 
-    duration: '20s', 
-    reward: '1 Month Free' 
-  },
-  { 
-    id: '5', 
-    title: 'Online Course', 
-    company: 'Udemy', 
-    category: 'Education', 
-    tags: ['Learning', 'Online', 'Skills'], 
-    duration: '60s', 
-    reward: '30% OFF' 
-  },
-];
-
-// All available categories
-const ALL_CATEGORIES = [
-  { id: '1', name: 'All' },
-  { id: '2', name: 'Electronics' },
-  { id: '3', name: 'Fashion' },
-  { id: '4', name: 'Food' },
-  { id: '5', name: 'Sports' },
-  { id: '6', name: 'Entertainment' },
-  { id: '7', name: 'Education' },
-];
+import AdService from '../services/AdService'; // Import the new service
+import { useUser } from '../context/UserContext';
 
 const HomeScreen = ({ navigation }) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedTags, setSelectedTags] = useState([]);
-  const [userInterests, setUserInterests] = useState([]);
-  const [filteredCategories, setFilteredCategories] = useState([ALL_CATEGORIES[0]]);
+  const [filteredCategories, setFilteredCategories] = useState([]);
+  const [availableAds, setAvailableAds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [allTags, setAllTags] = useState([]);
+  
+  // Get user context
+  const { userInterests } = useUser();
   
   // useIsFocused will return true when the screen is focused
   const isFocused = useIsFocused();
 
-  // Load user interests when the screen comes into focus
+  // Load categories based on user interests
   useEffect(() => {
-    const loadUserInterests = async () => {
-      try {
-        const savedInterests = await AsyncStorage.getItem('userInterests');
-        if (savedInterests) {
-          const interests = JSON.parse(savedInterests);
-          setUserInterests(interests);
-          
-          // Create filtered categories based on user interests
-          // Always include "All" category
-          const filtered = [ALL_CATEGORIES[0]];
-          
-          // Add categories from ALL_CATEGORIES that match user interests
-          ALL_CATEGORIES.forEach(category => {
-            if (category.name !== 'All' && interests.includes(category.name)) {
-              filtered.push(category);
-            }
-          });
-          
-          setFilteredCategories(filtered);
-          
-          // If selected category is not in user interests, reset to "All"
-          if (selectedCategory !== 'All' && !interests.includes(selectedCategory)) {
-            setSelectedCategory('All');
-          }
-        } else {
-          // If no interests are saved, show all categories
-          setFilteredCategories(ALL_CATEGORIES);
+    // Always include 'All' category
+    const categories = [{ id: '1', name: 'All' }];
+    
+    if (userInterests && userInterests.length > 0) {
+      // Load only the categories that match user interests
+      console.log("HomeScreen: Filtering categories based on interests:", userInterests);
+      
+      // Get all available categories
+      const allCategories = AdService.getAllCategories();
+      
+      // Filter to include only selected interests plus 'All'
+      allCategories.forEach(category => {
+        if (category.name !== 'All' && userInterests.includes(category.name)) {
+          categories.push(category);
         }
-      } catch (error) {
-        console.error('Error loading user interests:', error);
-        // Show all categories as a fallback
-        setFilteredCategories(ALL_CATEGORIES);
-      }
-    };
-
-    if (isFocused) {
-      loadUserInterests();
+      });
+    } else {
+      // If no interests are selected, show all categories
+      const allCategories = AdService.getAllCategories();
+      allCategories.forEach(category => {
+        if (category.name !== 'All') {
+          categories.push(category);
+        }
+      });
     }
-  }, [isFocused]);
+    
+    setFilteredCategories(categories);
+    
+    // Reset to 'All' if the currently selected category is no longer available
+    if (selectedCategory !== 'All' && !categories.some(c => c.name === selectedCategory)) {
+      setSelectedCategory('All');
+    }
+    
+    // Load all possible tags
+    const tags = AdService.getAllTags();
+    setAllTags(tags);
+  }, [userInterests]);
+
+  // Load filtered ads when dependencies change
+  useEffect(() => {
+    if (isFocused) {
+      loadFilteredAds();
+      console.log("HomeScreen: Loading ads with category:", selectedCategory, "and interests:", userInterests);
+    }
+  }, [isFocused, selectedCategory, selectedTags, userInterests]);
+
+  // Load filtered ads based on current selections
+  const loadFilteredAds = async () => {
+    if (!isFocused) return;
+    
+    try {
+      setLoading(true);
+      const ads = await AdService.getFilteredAds(
+        selectedCategory, 
+        selectedTags, 
+        userInterests
+      );
+      setAvailableAds(ads);
+    } catch (error) {
+      console.error('Error loading filtered ads:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   // Toggle tag selection
   const toggleTag = (tag) => {
@@ -143,65 +127,107 @@ const HomeScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
+  // Handle pull-to-refresh
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadFilteredAds();
+  };
+
   // Render ad card
   const renderAdCard = ({ item }) => (
     <TouchableOpacity 
       style={styles.adCard}
-      onPress={() => navigation.navigate('AdView', { adId: item.id })}
+      onPress={() => {
+        // Track that this ad was viewed
+        AdService.trackAdView(item.id);
+        // Navigate to the ad view screen
+        navigation.navigate('AdView', { adId: item.id });
+      }}
     >
-      <View style={styles.adHeader}>
-        <Text style={styles.companyName}>{item.company}</Text>
-        <Text style={styles.adCategory}>{item.category}</Text>
-      </View>
+      {/* Add thumbnail image */}
+      <Image 
+        source={{ uri: item.thumbnail }}
+        style={styles.adThumbnail}
+        resizeMode="cover"
+      />
       
-      <Text style={styles.adTitle}>{item.title}</Text>
-      
-      {/* Display tags */}
-      <View style={styles.tagsContainer}>
-        {item.tags?.map((tag, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={[
-              styles.tagBadge,
-              selectedTags.includes(tag) && styles.selectedTagBadge
-            ]}
-            onPress={() => toggleTag(tag)}
-          >
-            <Text 
+      <View style={styles.adContent}>
+        <View style={styles.adHeader}>
+          <Text style={styles.companyName}>{item.company}</Text>
+          <Text style={styles.adCategory}>{item.category}</Text>
+        </View>
+        
+        <Text style={styles.adTitle}>{item.title}</Text>
+        
+        {/* Display tags */}
+        <View style={styles.tagsContainer}>
+          {item.tags?.map((tag, index) => (
+            <TouchableOpacity 
+              key={index} 
               style={[
-                styles.tagText,
-                selectedTags.includes(tag) && styles.selectedTagText
+                styles.tagBadge,
+                selectedTags.includes(tag) && styles.selectedTagBadge
               ]}
+              onPress={() => toggleTag(tag)}
             >
-              {tag}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      
-      <View style={styles.adFooter}>
-        <Text style={styles.adDuration}>{item.duration}</Text>
-        <View style={styles.rewardBadge}>
-          <Text style={styles.rewardText}>{item.reward}</Text>
+              <Text 
+                style={[
+                  styles.tagText,
+                  selectedTags.includes(tag) && styles.selectedTagText
+                ]}
+              >
+                {tag}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        
+        <View style={styles.adFooter}>
+          <Text style={styles.adDuration}>{item.durationStr}</Text>
+          <View style={styles.rewardBadge}>
+            <Text style={styles.rewardText}>{item.reward}</Text>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
   );
 
-  // Filter ads based on selected category and tags
-  const filteredAds = SAMPLE_ADS.filter(ad => {
-    // Category filter
-    const passesCategory = selectedCategory === 'All' || ad.category === selectedCategory;
+  // Render tag filters
+  const renderTagFiltersSection = () => {
+    // Show up to 10 most common tags
+    const displayTags = allTags.slice(0, 10);
     
-    // Tag filter
-    const passesTags = selectedTags.length === 0 || 
-      selectedTags.some(tag => ad.tags?.includes(tag));
-    
-    return passesCategory && passesTags;
-  });
+    return (
+      <View style={styles.tagFiltersContainer}>
+        <Text style={styles.tagFiltersTitle}>Filter by Tags:</Text>
+        <View style={styles.tagFiltersList}>
+          {displayTags.map((tag, index) => (
+            <TouchableOpacity 
+              key={index} 
+              style={[
+                styles.tagFilterBadge,
+                selectedTags.includes(tag) && styles.selectedTagFilterBadge
+              ]}
+              onPress={() => toggleTag(tag)}
+            >
+              <Text 
+                style={[
+                  styles.tagFilterText,
+                  selectedTags.includes(tag) && styles.selectedTagFilterText
+                ]}
+              >
+                {tag}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Categories horizontal list */}
       <View style={styles.categoriesContainer}>
         <FlatList
           data={filteredCategories}
@@ -212,20 +238,47 @@ const HomeScreen = ({ navigation }) => {
         />
       </View>
       
-      <FlatList
-        data={filteredAds}
-        renderItem={renderAdCard}
-        keyExtractor={item => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.adsList}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              No ads found for this category or tag selection.
-            </Text>
-          </View>
-        )}
-      />
+      {/* Tag filters */}
+      {renderTagFiltersSection()}
+      
+      {/* Ads list */}
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6200ee" />
+          <Text style={styles.loadingText}>Loading ads...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={availableAds}
+          renderItem={renderAdCard}
+          keyExtractor={item => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.adsList}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#6200ee']}
+            />
+          }
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                No ads found for this category or tag selection.
+              </Text>
+              <TouchableOpacity 
+                style={styles.resetButton}
+                onPress={() => {
+                  setSelectedCategory('All');
+                  setSelectedTags([]);
+                }}
+              >
+                <Text style={styles.resetButtonText}>Reset Filters</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -256,19 +309,71 @@ const styles = StyleSheet.create({
   selectedCategoryText: {
     color: '#fff',
   },
+  tagFiltersContainer: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginTop: 1,
+  },
+  tagFiltersTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 8,
+  },
+  tagFiltersList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  tagFilterBadge: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  selectedTagFilterBadge: {
+    backgroundColor: '#e0cfff',
+  },
+  tagFilterText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  selectedTagFilterText: {
+    color: '#6200ee',
+    fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+  },
   adsList: {
     padding: 16,
   },
   adCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
     marginBottom: 16,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 1,
+    overflow: 'hidden', // For the image corners to be rounded
+  },
+  adThumbnail: {
+    width: '100%',
+    height: 150,
+    backgroundColor: '#e0e0e0',
+  },
+  adContent: {
+    padding: 16,
   },
   adHeader: {
     flexDirection: 'row',
@@ -283,6 +388,10 @@ const styles = StyleSheet.create({
   adCategory: {
     fontSize: 12,
     color: '#666',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
   adTitle: {
     fontSize: 18,
@@ -318,6 +427,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 8,
   },
   adDuration: {
     fontSize: 13,
@@ -345,6 +455,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  resetButton: {
+    backgroundColor: '#6200ee',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontWeight: '500',
   },
 });
 

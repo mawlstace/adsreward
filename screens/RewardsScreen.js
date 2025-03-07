@@ -1,70 +1,67 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUser } from '../context/UserContext';
 
 const RewardsScreen = ({ route, navigation }) => {
+  // Get user context
+  const { userData, updateUserData } = useUser();
+  
   // State to manage the rewards list
   const [rewards, setRewards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
   
-  // Get the new reward from params if available
-  const newReward = route.params?.newReward;
+  // Get the refresh signal from route params
+  const refresh = route.params?.refresh;
   
-  // Load saved rewards on component mount
-  useEffect(() => {
-    loadRewards();
+  // Load saved rewards from AsyncStorage - extract as a standalone function
+  const loadRewards = useCallback(async () => {
+    try {
+      console.log("RewardsScreen: Loading rewards from storage");
+      setLoading(true);
+      const savedRewards = await AsyncStorage.getItem('userRewards');
+      console.log("Loaded rewards from storage:", savedRewards);
+      
+      if (savedRewards) {
+        const parsedRewards = JSON.parse(savedRewards);
+        setRewards(parsedRewards);
+        console.log("RewardsScreen: Set rewards state with", parsedRewards.length, "rewards");
+      } else {
+        console.log("RewardsScreen: No rewards found in storage");
+        setRewards([]);
+      }
+    } catch (error) {
+      console.error('Error loading rewards:', error);
+      setRewards([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
   
-  // Handle new reward - separated from the main useEffect to avoid dependency issues
+  // Load saved rewards on component mount or when screen is focused or refresh changes
   useEffect(() => {
-    async function handleNewReward() {
-      if (newReward) {
-        console.log("New reward received:", newReward);
-        
-        // Load current rewards from storage first to ensure we have the latest
-        let currentRewards = [];
-        try {
-          const savedRewardsStr = await AsyncStorage.getItem('userRewards');
-          if (savedRewardsStr) {
-            currentRewards = JSON.parse(savedRewardsStr);
-          }
-        } catch (error) {
-          console.error('Error loading rewards during add:', error);
-        }
-        
-        // Make sure we're not adding duplicates by using a unique ID
-        const uniqueId = `${newReward.id}-${Date.now()}`;
-        
-        // Add the reward with a unique ID and timestamp
-        const rewardToAdd = {
-          ...newReward,
-          uniqueId: uniqueId,
-          timestamp: new Date().toISOString()
-        };
-        
-        // Add to existing rewards
-        const updatedRewards = [...currentRewards, rewardToAdd];
-        
-        // Save to AsyncStorage
-        try {
-          console.log("Saving rewards:", updatedRewards);
-          await AsyncStorage.setItem('userRewards', JSON.stringify(updatedRewards));
-          
-          // Update state after successful save
-          setRewards(updatedRewards);
-          
-          // Show feedback
-          showTemporaryFeedback('Reward added!');
-        } catch (error) {
-          console.error('Error saving new reward:', error);
-        }
-      }
+    // Load rewards when focused
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log("RewardsScreen focused, reloading rewards");
+      loadRewards();
+    });
+
+    // Initial load
+    loadRewards();
+
+    // Cleanup listener on unmount
+    return unsubscribe;
+  }, [navigation, loadRewards]);
+  
+  // Watch for refresh param changes to trigger reload
+  useEffect(() => {
+    if (refresh) {
+      console.log("RewardsScreen: Refresh param changed, reloading rewards");
+      loadRewards();
     }
-    
-    handleNewReward();
-  }, [newReward]);
+  }, [refresh, loadRewards]);
   
   // Show feedback message temporarily
   const showTemporaryFeedback = (message) => {
@@ -74,23 +71,6 @@ const RewardsScreen = ({ route, navigation }) => {
     setTimeout(() => {
       setShowFeedback(false);
     }, 2000);
-  };
-  
-  // Load saved rewards from AsyncStorage
-  const loadRewards = async () => {
-    try {
-      setLoading(true);
-      const savedRewards = await AsyncStorage.getItem('userRewards');
-      console.log("Loaded rewards from storage:", savedRewards);
-      
-      if (savedRewards) {
-        setRewards(JSON.parse(savedRewards));
-      }
-    } catch (error) {
-      console.error('Error loading rewards:', error);
-    } finally {
-      setLoading(false);
-    }
   };
   
   // Save rewards to AsyncStorage
@@ -103,49 +83,145 @@ const RewardsScreen = ({ route, navigation }) => {
     }
   };
   
-  // Delete a reward
+  // Delete a reward and update storage
   const deleteReward = async (uniqueId) => {
-    const updatedRewards = rewards.filter(reward => reward.uniqueId !== uniqueId);
-    setRewards(updatedRewards);
-    await saveRewards(updatedRewards);
+    try {
+      console.log("Deleting reward with ID:", uniqueId);
+      
+      // Update local state first for immediate feedback
+      const updatedRewards = rewards.filter(reward => reward.uniqueId !== uniqueId);
+      setRewards(updatedRewards);
+      
+      // Then update storage
+      await saveRewards(updatedRewards);
+      
+      return true; // Success
+    } catch (error) {
+      console.error('Error deleting reward:', error);
+      return false; // Failed
+    }
   };
   
   // Use a reward
-  const useReward = (uniqueId) => {
+  const useReward = async (uniqueId) => {
+    console.log("Attempting to use reward with ID:", uniqueId);
+    
     // Find the reward
     const reward = rewards.find(r => r.uniqueId === uniqueId);
     
     if (reward) {
-      // Show promo code as feedback
-      showTemporaryFeedback(`Code: ${reward.promoCode} is now being used`);
+      console.log("Found reward to use:", reward);
       
-      // In a real app, you might mark it as used instead of deleting it
-      deleteReward(uniqueId);
+      // Show confirmation alert
+      Alert.alert(
+        "Use Reward",
+        `Are you sure you want to use the ${reward.reward} reward from ${reward.company || 'Unknown Company'}?`,
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          {
+            text: "Use Now",
+            onPress: async () => {
+              try {
+                // First remove the reward from view immediately for better UX
+                const tempUpdatedRewards = rewards.filter(r => r.uniqueId !== uniqueId);
+                setRewards(tempUpdatedRewards);
+                
+                // Show the promo code alert
+                Alert.alert(
+                  "Reward Claimed!",
+                  `Your promo code is: ${reward.promoCode}\n\nShow this code to the cashier or enter it at checkout.`,
+                  [
+                    { 
+                      text: "OK", 
+                      onPress: async () => {
+                        try {
+                          // Complete the actual deletion from storage
+                          const success = await deleteReward(uniqueId);
+                          
+                          if (success) {
+                            // Update used rewards count in AsyncStorage
+                            const usedCountStr = await AsyncStorage.getItem('usedRewardsCount');
+                            let usedCount = 1;
+                            if (usedCountStr) {
+                              usedCount = parseInt(usedCountStr, 10) + 1;
+                            }
+                            await AsyncStorage.setItem('usedRewardsCount', usedCount.toString());
+                            
+                            // Update user context
+                            if (userData) {
+                              const currentUsed = userData.rewardsUsed || 0;
+                              updateUserData({ rewardsUsed: currentUsed + 1 });
+                            }
+                            
+                            // Show success message
+                            showTemporaryFeedback("Reward successfully redeemed!");
+                          } else {
+                            // If there was an error, put the reward back in the list
+                            setRewards([...tempUpdatedRewards, reward]);
+                            showTemporaryFeedback("Failed to redeem reward. Please try again.");
+                          }
+                        } catch (error) {
+                          console.error("Error completing reward usage:", error);
+                          // If there was an error, put the reward back in the list
+                          setRewards([...tempUpdatedRewards, reward]);
+                          showTemporaryFeedback("Error redeeming reward.");
+                        }
+                      }
+                    }
+                  ]
+                );
+              } catch (error) {
+                console.error('Error in reward claiming process:', error);
+                showTemporaryFeedback("Error showing reward code.");
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      console.error("Reward not found with ID:", uniqueId);
+      Alert.alert("Error", "Reward not found. Please try again.");
     }
   };
 
   const renderRewardCard = ({ item }) => {
     // Format the expiry date
-    const expiryDate = new Date(item.expiryDate);
-    const formattedDate = expiryDate.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    let formattedDate = "No expiry date";
+    try {
+      const expiryDate = new Date(item.expiryDate);
+      // Check if date is valid
+      if (!isNaN(expiryDate.getTime())) {
+        formattedDate = expiryDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      }
+    } catch (error) {
+      console.error('Error formatting date:', error);
+    }
+
+    // Check if promo code exists
+    const hasPromoCode = item.promoCode && item.promoCode.trim() !== '';
 
     return (
       <View style={styles.rewardCard}>
         <View style={styles.rewardHeader}>
-          <Text style={styles.companyName}>{item.company}</Text>
+          <Text style={styles.companyName}>{item.company || 'Unknown Company'}</Text>
           <Text style={styles.expiryDate}>Expires: {formattedDate}</Text>
         </View>
         
-        <Text style={styles.rewardText}>{item.reward}</Text>
+        <Text style={styles.rewardText}>{item.reward || 'Reward'}</Text>
         
-        <View style={styles.promoCodeContainer}>
-          <Text style={styles.promoCodeLabel}>Promo Code:</Text>
-          <Text style={styles.promoCode}>{item.promoCode}</Text>
-        </View>
+        {hasPromoCode && (
+          <View style={styles.promoCodeContainer}>
+            <Text style={styles.promoCodeLabel}>Promo Code:</Text>
+            <Text style={styles.promoCode}>{item.promoCode}</Text>
+          </View>
+        )}
         
         <TouchableOpacity 
           style={styles.useButton}

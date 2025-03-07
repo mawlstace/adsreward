@@ -1,38 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { AntDesign } from '@expo/vector-icons';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  Alert
+} from 'react-native';
+import { AntDesign, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import AdService from '../services/AdService';
+import { useUser } from '../context/UserContext';
+import { CommonActions } from '@react-navigation/native';
 
-// Sample data - will be replaced with API data later
-const AD_DETAILS = {
-  '1': { 
-    id: '1', 
-    title: 'Nike Running Shoes', 
-    company: 'Nike', 
-    description: 'Discover our latest running shoes designed for maximum comfort and performance.',
-    duration: 30, // in seconds
-    reward: '15% OFF',
-    promoCode: 'NIKE15RUN'
-  },
-  '2': { 
-    id: '2', 
-    title: 'New Coffee Blend', 
-    company: 'Starbucks', 
-    description: 'Try our new seasonal coffee blend with notes of chocolate and caramel.',
-    duration: 15, 
-    reward: 'Buy 1 Get 1 Free',
-    promoCode: 'SBUX2FOR1'
-  },
-  '3': { 
-    id: '3', 
-    title: 'Wireless Headphones', 
-    company: 'Sony', 
-    description: 'Try our new Wireless Headphones.',
-    duration: 15, 
-    reward: 'Buy 1 Get 1 Free',
-    promoCode: 'Sony1FOR1'
-  }
-};
 
 const AdViewScreen = ({ route, navigation }) => {
   const { adId } = route.params;
@@ -42,21 +24,25 @@ const AdViewScreen = ({ route, navigation }) => {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [claimInProgress, setClaimInProgress] = useState(false);
+  const { userData, updateUserData } = useUser();
 
-  // Simulate fetching ad details
+  // Fetch ad details
   useEffect(() => {
-    const fetchAdDetails = () => {
-      // Simulate API call delay
-      setTimeout(() => {
-        // Check if adId exists and corresponds to a valid ad
-        if (adId && AD_DETAILS[adId]) {
-          setAd(AD_DETAILS[adId]);
+    const fetchAdDetails = async () => {
+      setLoading(true);
+      
+      try {
+        const adDetails = await AdService.getAdById(adId);
+        if (adDetails) {
+          setAd(adDetails);
         } else {
-          // Handle invalid adId
-          console.error('Invalid adId:', adId);
+          console.error('Ad not found:', adId);
         }
+      } catch (error) {
+        console.error('Error fetching ad details:', error);
+      } finally {
         setLoading(false);
-      }, 500);
+      }
     };
     
     fetchAdDetails();
@@ -86,7 +72,7 @@ const AdViewScreen = ({ route, navigation }) => {
     };
   }, [watching, timeRemaining]);
 
-  // Increment watched ads count in AsyncStorage
+  // Increment watched ads count in AsyncStorage and UserContext
   const incrementWatchedAdsCount = async () => {
     try {
       // Get current count
@@ -100,6 +86,11 @@ const AdViewScreen = ({ route, navigation }) => {
       // Save new count
       await AsyncStorage.setItem('watchedAdsCount', newCount.toString());
       console.log('Watched ads count updated to:', newCount);
+      
+      // Update user context
+      if (userData) {
+        updateUserData({ watchedAds: newCount });
+      }
     } catch (error) {
       console.error('Error updating watched ads count:', error);
     }
@@ -107,7 +98,7 @@ const AdViewScreen = ({ route, navigation }) => {
 
   const startWatchingAd = () => {
     if (ad) {
-      // Use the full duration without any multiplier
+      // Use the full duration from the ad object
       setTimeRemaining(ad.duration);
       setWatching(true);
     }
@@ -119,6 +110,35 @@ const AdViewScreen = ({ route, navigation }) => {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Helper function to navigate to rewards screen - FIXED VERSION
+  const goToRewardsScreen = () => {
+    console.log("Navigating to rewards tab");
+    
+    // Clear any claim in progress
+    setClaimInProgress(false);
+    
+    try {
+      // Reset navigation to main tab navigator
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Main' }],
+      });
+      
+      // Then navigate to the RewardsTab inside Main
+      setTimeout(() => {
+        navigation.navigate('Main', { 
+          screen: 'RewardsTab',
+          params: { refresh: true } 
+        });
+      }, 300); // Increased timeout for more reliable navigation
+    } catch (error) {
+      console.error("Error navigating to rewards tab:", error);
+      
+      // Last resort - just go back to main screen
+      navigation.navigate('Main');
+    }
+  };
+
   // Claim the reward and navigate to rewards screen
   const claimReward = async () => {
     if (!ad || claimInProgress) return;
@@ -126,6 +146,16 @@ const AdViewScreen = ({ route, navigation }) => {
     setClaimInProgress(true);
     
     try {
+      // Make sure we have all required fields for a valid reward
+      if (!ad.id || !ad.company || !ad.reward || !ad.promoCode) {
+        Alert.alert(
+          "Error",
+          "This ad has incomplete reward information. Please try another ad.",
+          [{ text: "OK", onPress: () => setClaimInProgress(false) }]
+        );
+        return;
+      }
+
       // Create reward with all necessary data
       const newReward = {
         id: ad.id,
@@ -133,18 +163,100 @@ const AdViewScreen = ({ route, navigation }) => {
         reward: ad.reward,
         promoCode: ad.promoCode,
         expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+        claimedDate: new Date().toISOString(),
       };
       
       console.log("Claiming reward:", newReward);
       
-      // Navigate to the Rewards screen with the new reward
-      setTimeout(() => {
-        navigation.navigate('Rewards', { newReward });
+      // Save directly to AsyncStorage to ensure it's saved immediately
+      try {
+        // Get current rewards first
+        const savedRewardsStr = await AsyncStorage.getItem('userRewards');
+        let currentRewards = [];
+        if (savedRewardsStr) {
+          currentRewards = JSON.parse(savedRewardsStr);
+        }
+        
+        // Check if we already have this exact reward (prevent duplicates)
+        const isDuplicate = currentRewards.some(reward => 
+          reward.id === newReward.id && 
+          reward.promoCode === newReward.promoCode
+        );
+        
+        if (isDuplicate) {
+          console.log("Duplicate reward detected, not adding again:", newReward.promoCode);
+          
+          // Release the button state
+          setClaimInProgress(false);
+          
+          // Show alert and navigate
+          Alert.alert(
+            "Already Claimed",
+            "You have already claimed this reward. Check your rewards page.",
+            [{ 
+              text: "Go to Rewards", 
+              onPress: () => {
+                console.log("Navigating to rewards from duplicate alert");
+                goToRewardsScreen();
+              }
+            }]
+          );
+          
+          return;
+        }
+        
+        // Add new reward with unique ID
+        const uniqueId = `${newReward.id}-${Date.now()}`;
+        const rewardToAdd = {
+          ...newReward,
+          uniqueId: uniqueId,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Update rewards list
+        const updatedRewards = [...currentRewards, rewardToAdd];
+        
+        // Save to AsyncStorage
+        await AsyncStorage.setItem('userRewards', JSON.stringify(updatedRewards));
+        console.log("Reward saved directly to storage:", rewardToAdd);
+        
+        // Update user context - increment rewards earned
+        if (userData) {
+          const currentRewardsCount = userData.rewardsEarned || 0;
+          updateUserData({ rewardsEarned: currentRewardsCount + 1 });
+        }
+        
+        // Release the button state
         setClaimInProgress(false);
-      }, 300); // Reduced delay for faster response
+        
+        // Show success alert and navigate after a user confirms
+        Alert.alert(
+          "Reward Claimed!",
+          "Your reward has been added to your rewards list.",
+          [{ 
+            text: "View Rewards", 
+            onPress: () => {
+              console.log("Navigating to rewards from success alert");
+              goToRewardsScreen();
+            }
+          }]
+        );
+        
+      } catch (error) {
+        console.error('Error saving reward to AsyncStorage:', error);
+        Alert.alert(
+          "Error",
+          "There was a problem saving your reward. Please try again.",
+          [{ text: "OK", onPress: () => setClaimInProgress(false) }]
+        );
+      }
     } catch (error) {
       console.error('Error claiming reward:', error);
-      setClaimInProgress(false);
+      Alert.alert(
+        "Error",
+        "There was a problem claiming your reward. Please try again.",
+        [{ text: "OK", onPress: () => setClaimInProgress(false) }]
+      );
     }
   };
 
@@ -174,14 +286,39 @@ const AdViewScreen = ({ route, navigation }) => {
   }
   
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
+      {/* Ad Thumbnail */}
+      <Image 
+        source={{ uri: ad.thumbnail }}
+        style={styles.adImage}
+        resizeMode="cover"
+      />
+      
       <View style={styles.adDetails}>
-        <Text style={styles.companyName}>{ad.company}</Text>
+        <View style={styles.adHeaderRow}>
+          <Text style={styles.companyName}>{ad.company}</Text>
+          <View style={styles.categoryBadge}>
+            <Text style={styles.categoryText}>{ad.category}</Text>
+          </View>
+        </View>
+        
         <Text style={styles.adTitle}>{ad.title}</Text>
         <Text style={styles.adDescription}>{ad.description}</Text>
         
+        {/* Tags */}
+        <View style={styles.tagsContainer}>
+          {ad.tags && ad.tags.map((tag, index) => (
+            <View key={index} style={styles.tagBadge}>
+              <Text style={styles.tagText}>{tag}</Text>
+            </View>
+          ))}
+        </View>
+        
         <View style={styles.rewardContainer}>
-          <Text style={styles.rewardLabel}>Reward:</Text>
+          <View style={styles.rewardHeader}>
+            <Ionicons name="gift-outline" size={20} color="#4caf50" />
+            <Text style={styles.rewardLabel}>Reward:</Text>
+          </View>
           <Text style={styles.rewardValue}>{ad.reward}</Text>
         </View>
       </View>
@@ -229,7 +366,7 @@ const AdViewScreen = ({ route, navigation }) => {
           </View>
         )}
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
@@ -243,6 +380,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
+    padding: 20,
   },
   loadingText: {
     marginTop: 10,
@@ -265,13 +403,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  adImage: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#e0e0e0',
+  },
   adDetails: {
     padding: 20,
   },
+  adHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   companyName: {
     fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  categoryBadge: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+  },
+  categoryText: {
+    fontSize: 12,
     color: '#666',
-    marginBottom: 4,
   },
   adTitle: {
     fontSize: 24,
@@ -285,36 +444,58 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 24,
   },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  tagBadge: {
+    backgroundColor: '#e0cfff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  tagText: {
+    fontSize: 12,
+    color: '#6200ee',
+  },
   rewardContainer: {
+    backgroundColor: '#e8f5e9',
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  rewardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e8f5e9',
-    padding: 10,
-    borderRadius: 8,
+    marginBottom: 8,
   },
   rewardLabel: {
     fontSize: 16,
     fontWeight: '500',
     color: '#333',
-    marginRight: 8,
+    marginLeft: 8,
   },
   rewardValue: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#4caf50',
   },
   videoContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: 20,
     backgroundColor: '#f5f5f5',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
-    padding: 20,
+    alignItems: 'center',
+    minHeight: 300,
+    justifyContent: 'center',
   },
   startButton: {
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 20,
   },
   startButtonText: {
     marginTop: 12,
@@ -324,6 +505,7 @@ const styles = StyleSheet.create({
   },
   watchingContainer: {
     alignItems: 'center',
+    padding: 20,
   },
   timerText: {
     marginTop: 16,
@@ -339,6 +521,7 @@ const styles = StyleSheet.create({
   },
   completedContainer: {
     alignItems: 'center',
+    padding: 20,
   },
   completedText: {
     marginTop: 16,

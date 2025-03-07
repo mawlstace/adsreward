@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useUser } from '../context/UserContext';
 
 // All available categories that match with ads
 const AVAILABLE_CATEGORIES = [
   'Electronics',
-  'Fashion',
   'Food',
   'Sports',
   'Entertainment',
@@ -13,20 +13,20 @@ const AVAILABLE_CATEGORIES = [
 ];
 
 const ProfileScreen = ({ navigation }) => {
-  // User data with dynamic stats
-  const [userData, setUserData] = useState({
-    name: 'John Doe',
-    email: 'john.doe@example.com',
-    joinDate: 'March 2025',
-    watchedAds: 0,
-    rewardsEarned: 0,
-    rewardsUsed: 0,
-  });
-
+  // Get user data from context
+  const { userData, updateUserData, updateUserInterests, userInterests = [] } = useUser();
+  
   // State for managing selected interests (categories)
   const [selectedInterests, setSelectedInterests] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Initial setup of selected interests from user context
+  useEffect(() => {
+    if (userInterests && userInterests.length > 0) {
+      setSelectedInterests([...userInterests]);
+    }
+  }, [userInterests]);
 
   // Load user data and interests on component mount
   useEffect(() => {
@@ -35,68 +35,83 @@ const ProfileScreen = ({ navigation }) => {
         // Load interests
         const savedInterests = await AsyncStorage.getItem('userInterests');
         if (savedInterests) {
-          setSelectedInterests(JSON.parse(savedInterests));
-        }
-
-        // Load watched ads count
-        const watchedAds = await AsyncStorage.getItem('watchedAdsCount');
-        let watchedAdsCount = 0;
-        if (watchedAds) {
-          watchedAdsCount = parseInt(watchedAds, 10);
-        }
-
-        // Load rewards count from actual rewards data
-        const savedRewards = await AsyncStorage.getItem('userRewards');
-        let earnedCount = 0;
-        let usedCount = 0;
-        
-        if (savedRewards) {
-          const rewardsData = JSON.parse(savedRewards);
-          earnedCount = rewardsData.length;
+          const interests = JSON.parse(savedInterests);
+          setSelectedInterests(interests);
           
-          // Load used rewards count
-          const usedRewards = await AsyncStorage.getItem('usedRewardsCount');
-          if (usedRewards) {
-            usedCount = parseInt(usedRewards, 10);
+          // Only update context if different to prevent loops
+          if (JSON.stringify(interests) !== JSON.stringify(userInterests)) {
+            updateUserInterests(interests);
           }
         }
 
-        // Update user data with actual stats
-        setUserData(prevData => ({
-          ...prevData,
-          watchedAds: watchedAdsCount,
-          rewardsEarned: earnedCount,
-          rewardsUsed: usedCount
-        }));
+        // Load stats data
+        const watchedAds = await AsyncStorage.getItem('watchedAdsCount');
+        const savedRewards = await AsyncStorage.getItem('userRewards');
+        const usedRewards = await AsyncStorage.getItem('usedRewardsCount');
+        
+        // Parse values with defaults
+        let watchedAdsCount = watchedAds ? parseInt(watchedAds, 10) : 0;
+        
+        let earnedCount = 0;
+        if (savedRewards) {
+          const rewardsData = JSON.parse(savedRewards);
+          earnedCount = rewardsData.length;
+        }
+        
+        let usedCount = usedRewards ? parseInt(usedRewards, 10) : 0;
+        
+        // Only update data if values have changed
+        if (
+          watchedAdsCount !== userData?.watchedAds ||
+          earnedCount !== userData?.rewardsEarned ||
+          usedCount !== userData?.rewardsUsed
+        ) {
+          updateUserData({
+            watchedAds: watchedAdsCount,
+            rewardsEarned: earnedCount,
+            rewardsUsed: usedCount
+          });
+        }
       } catch (error) {
         console.error('Error loading user data:', error);
       }
     };
 
+    // Set up focus listener to reload data when screen is focused
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('ProfileScreen focused, refreshing user data');
+      loadUserData();
+    });
+
+    // Initial data load
     loadUserData();
-  }, []);
+
+    // Clean up listener
+    return unsubscribe;
+  }, [navigation, updateUserData, updateUserInterests, userData, userInterests]);
 
   // Toggle selection of a category and save immediately
   const toggleInterest = async (category) => {
-    const newInterests = [...selectedInterests];
+    let newInterests = [...selectedInterests];
     
     if (selectedInterests.includes(category)) {
       // Remove the category
-      const index = newInterests.indexOf(category);
-      if (index > -1) {
-        newInterests.splice(index, 1);
-      }
+      newInterests = newInterests.filter(interest => interest !== category);
     } else {
       // Add the category
       newInterests.push(category);
     }
     
-    // Update state
+    // Update local state
     setSelectedInterests(newInterests);
     
-    // Save immediately
+    // Save immediately to AsyncStorage
     try {
       await AsyncStorage.setItem('userInterests', JSON.stringify(newInterests));
+      
+      // Update the user context so other screens can react
+      updateUserInterests(newInterests);
+      console.log("Profile: Updated interests in context:", newInterests);
     } catch (error) {
       console.error('Error saving interest toggle:', error);
     }
@@ -107,6 +122,10 @@ const ProfileScreen = ({ navigation }) => {
     setIsSaving(true);
     try {
       await AsyncStorage.setItem('userInterests', JSON.stringify(selectedInterests));
+      
+      // Update the user context
+      updateUserInterests(selectedInterests);
+      console.log("Profile: Saved all interests:", selectedInterests);
       
       // Show success state
       setSaveSuccess(true);
@@ -150,28 +169,28 @@ const ProfileScreen = ({ navigation }) => {
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{userData.name.charAt(0)}</Text>
+              <Text style={styles.avatarText}>{userData?.name?.charAt(0) || 'U'}</Text>
             </View>
           </View>
           
-          <Text style={styles.userName}>{userData.name}</Text>
-          <Text style={styles.userEmail}>{userData.email}</Text>
-          <Text style={styles.joinDate}>Member since {userData.joinDate}</Text>
+          <Text style={styles.userName}>{userData?.name || 'User'}</Text>
+          <Text style={styles.userEmail}>{userData?.email || 'user@example.com'}</Text>
+          <Text style={styles.joinDate}>Member since {userData?.joinDate || 'March 2025'}</Text>
         </View>
         
         <View style={styles.statsSection}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{userData.watchedAds}</Text>
+            <Text style={styles.statValue}>{userData?.watchedAds || 0}</Text>
             <Text style={styles.statLabel}>Ads Watched</Text>
           </View>
           
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{userData.rewardsEarned}</Text>
+            <Text style={styles.statValue}>{userData?.rewardsEarned || 0}</Text>
             <Text style={styles.statLabel}>Rewards Earned</Text>
           </View>
           
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{userData.rewardsUsed}</Text>
+            <Text style={styles.statValue}>{userData?.rewardsUsed || 0}</Text>
             <Text style={styles.statLabel}>Rewards Used</Text>
           </View>
         </View>

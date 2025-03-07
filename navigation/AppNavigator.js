@@ -3,7 +3,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import TabNavigator from './TabNavigator';
 import AuthNavigator from './AuthNavigator';
 import AdViewScreen from '../screens/AdViewScreen';
-import RewardsScreen from '../screens/RewardsScreen';
 import { useAuth } from '../context/AuthContext';
 
 const Stack = createNativeStackNavigator();
@@ -31,14 +30,8 @@ const AppNavigator = () => {
               title: 'Watch Ad'
             }}
           />
-          <Stack.Screen 
-            name="Rewards"
-            component={RewardsScreen}
-            options={{
-              headerShown: true,
-              title: 'My Rewards'
-            }}
-          />
+          {/* We don't need a separate Rewards screen here anymore,
+              since it's part of the TabNavigator */}
         </>
       ) : (
         <Stack.Screen name="Auth" component={AuthNavigator} />
